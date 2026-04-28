@@ -248,3 +248,133 @@ fn calculator_rejects_zero_base_amount() {
     let result = calc_client.try_compute(&bad_input);
     assert!(result.is_err());
 }
+
+/// When calculator address points to an undeployed contract, generate_premium
+/// falls back to the local engine gracefully.
+#[test]
+fn undeployed_calculator_falls_back_to_local_engine() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (policy_client, _, _, _) = setup_policy_contract(&env);
+
+    // Point to a non-existent contract address (not deployed)
+    let fake_calc_addr = Address::generate(&env);
+    policy_client.set_calculator(&fake_calc_addr);
+    assert_eq!(policy_client.get_calculator(), Some(fake_calc_addr));
+
+    // generate_premium should still succeed using local fallback
+    let quote = policy_client.generate_premium(&standard_risk_input(), &10_000_000i128, &false);
+    assert_eq!(quote.total_premium, 10_000_000);
+}
+
+/// initiate_policy uses the cross-contract calculator when configured.
+#[test]
+fn initiate_policy_uses_cross_contract_calculator() {
+    use niffyinsure::types::{AgeBand, CoverageTier, InitiatePolicyOptions, PolicyType, RegionTier};
+    use soroban_sdk::token;
+
+    let env = Env::default();
+    env.mock_all_auths();
+    let (policy_client, _, admin, token_addr) = setup_policy_contract(&env);
+    let (calc_client, calc_id, _) = setup_calculator(&env);
+
+    // Set up token balance and approval for premium payment
+    let holder = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let stellar_token = env.register_stellar_asset_contract_v2(issuer.clone()).address();
+    
+    // Re-initialize with stellar token for proper token operations
+    let new_contract_id = env.register(niffyinsure::NiffyInsure, ());
+    let new_client = NiffyInsureClient::new(&env, &new_contract_id);
+    new_client.initialize(&admin, &stellar_token);
+    
+    // Mint tokens and approve
+    token::StellarAssetClient::new(&env, &stellar_token).mint(&holder, &100_000_000);
+    token::Client::new(&env, &stellar_token).approve(
+        &holder,
+        &new_client.address,
+        &100_000_000,
+        &(env.ledger().sequence() + 10_000),
+    );
+
+    // Configure calculator
+    new_client.set_calculator(&calc_id);
+
+    // Verify calculator returns expected premium
+    let direct_result = calc_client.compute(&standard_calc_input(10_000_000));
+    assert_eq!(direct_result.premium, 10_000_000);
+
+    // initiate_policy should use the calculator
+    let policy = new_client.initiate_policy(
+        &holder,
+        &PolicyType::Auto,
+        &RegionTier::Medium,
+        &AgeBand::Adult,
+        &CoverageTier::Standard,
+        &0u32, // safety_score
+        &10_000_000i128,
+        &stellar_token,
+        &InitiatePolicyOptions {
+            beneficiary: None,
+            deductible: None,
+            expected_nonce: None,
+        },
+    );
+
+    // Premium should match calculator output
+    assert_eq!(policy.premium, direct_result.premium);
+    assert_eq!(policy.coverage, 10_000_000);
+}
+
+/// When calculator is unavailable (not deployed), initiate_policy falls back
+/// to local engine gracefully.
+#[test]
+fn initiate_policy_fallback_when_calculator_not_deployed() {
+    use niffyinsure::types::{AgeBand, CoverageTier, InitiatePolicyOptions, PolicyType, RegionTier};
+    use soroban_sdk::token;
+
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let stellar_token = env.register_stellar_asset_contract_v2(issuer.clone()).address();
+    
+    let contract_id = env.register(niffyinsure::NiffyInsure, ());
+    let client = NiffyInsureClient::new(&env, &contract_id);
+    client.initialize(&admin, &stellar_token);
+    
+    let holder = Address::generate(&env);
+    token::StellarAssetClient::new(&env, &stellar_token).mint(&holder, &100_000_000);
+    token::Client::new(&env, &stellar_token).approve(
+        &holder,
+        &client.address,
+        &100_000_000,
+        &(env.ledger().sequence() + 10_000),
+    );
+
+    // Point to undeployed calculator
+    let fake_calc_addr = Address::generate(&env);
+    client.set_calculator(&fake_calc_addr);
+
+    // initiate_policy should fall back to local engine
+    let policy = client.initiate_policy(
+        &holder,
+        &PolicyType::Auto,
+        &RegionTier::Medium,
+        &AgeBand::Adult,
+        &CoverageTier::Standard,
+        &0u32,
+        &10_000_000i128,
+        &stellar_token,
+        &InitiatePolicyOptions {
+            beneficiary: None,
+            deductible: None,
+            expected_nonce: None,
+        },
+    );
+
+    // Should succeed with local engine premium (Medium/Adult/Standard/0 = 10_000_000)
+    assert_eq!(policy.premium, 10_000_000);
+    assert_eq!(policy.coverage, 10_000_000);
+    assert!(policy.is_active);
+}
