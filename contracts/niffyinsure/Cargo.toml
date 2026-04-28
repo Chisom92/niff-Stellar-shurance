@@ -18,6 +18,10 @@ legacy-event-schema-tests = []
 # Reserves governance-token storage keys and optional admin entrypoints. No mint/transfer.
 # MVP / default builds must ship with this disabled.
 governance-token = []
+# Reserves the ClaimStatus::Appealed variant and appeal-window constants for future implementation.
+# Default builds compile without any appeal logic executing — the variant is documented only.
+# Enable to unlock appeal entrypoints once the full appeal flow is implemented and audited.
+appeal-stub = []
 
 [dependencies]
 soroban-sdk = { version = "=25.3.1", features = [] }

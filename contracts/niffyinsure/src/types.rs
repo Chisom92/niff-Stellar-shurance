@@ -139,6 +139,41 @@ pub enum ClaimStatus {
     AppealRejected,
     /// Claimant withdrew before voting began; record kept for audit; no payout.
     Withdrawn,
+    /// RESERVED — appeal in progress; not yet implemented.
+    ///
+    /// This variant is declared to **reserve the discriminant** in the on-chain
+    /// ABI and prevent future contract upgrades from introducing a breaking enum
+    /// change.  No existing entrypoint constructs or transitions to this status;
+    /// it is purely a forward-compatibility placeholder.
+    ///
+    /// Default builds compile without any appeal logic executing — this variant
+    /// exists in the type system but is unreachable through any live code path
+    /// until the full appeal flow is implemented and audited.
+    ///
+    /// # Intended appeal flow (future implementation)
+    ///
+    /// ```text
+    /// Rejected → Appealed        (claimant calls open_appeal within APPEAL_OPEN_WINDOW_LEDGERS)
+    ///                             appeal vote runs for APPEAL_VOTE_WINDOW_LEDGERS
+    /// Appealed → AppealApproved  (majority approve or deadline plurality)
+    /// Appealed → AppealRejected  (majority reject or deadline plurality)
+    /// ```
+    ///
+    /// # Auto-deactivation interaction
+    ///
+    /// When `on_reject` fires and the policy strike count reaches
+    /// `STRIKE_DEACTIVATION_THRESHOLD`, auto-deactivation MUST be deferred
+    /// while the claim is `Appealed`.  Implement by checking
+    /// `env.ledger().sequence() > appeal_open_deadline_ledger` before writing
+    /// `is_active = false` to the policy.
+    ///
+    /// # is_terminal() contract
+    ///
+    /// `Appealed` is intentionally **not** a terminal state — the claim is
+    /// still in flight.  `is_terminal()` returns `false` for this variant so
+    /// that voting and finalization guards correctly reject further transitions
+    /// until the appeal round resolves.
+    Appealed,
 }
 
 impl ClaimStatus {
@@ -151,6 +186,10 @@ impl ClaimStatus {
                 | ClaimStatus::AppealApproved
                 | ClaimStatus::AppealRejected
                 | ClaimStatus::Withdrawn
+            // NOTE: ClaimStatus::Appealed is intentionally absent — an appeal
+            // in progress is NOT terminal.  Adding it here would allow
+            // process_claim / finalize_claim to close an appealed claim without
+            // resolving the appeal round, which would be incorrect.
         )
     }
 }

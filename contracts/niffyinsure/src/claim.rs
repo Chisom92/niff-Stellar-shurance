@@ -878,3 +878,27 @@ mod claim_status_history_tests {
         );
     }
 }
+
+/// Verify that `ClaimStatus::Appealed` is not treated as a terminal state,
+/// which would incorrectly allow `process_claim` / `finalize_claim` to close
+/// an in-flight appeal without resolving the appeal round.
+#[cfg(test)]
+mod appeal_stub_tests {
+    use crate::types::ClaimStatus;
+
+    #[test]
+    fn appealed_is_not_terminal() {
+        assert!(
+            !ClaimStatus::Appealed.is_terminal(),
+            "ClaimStatus::Appealed must NOT be terminal — an appeal in progress \
+             must not allow finalization or payout until the appeal round resolves"
+        );
+    }
+
+    #[test]
+    fn appeal_resolved_states_are_terminal() {
+        // Once an appeal resolves, both outcomes are terminal.
+        assert!(ClaimStatus::AppealApproved.is_terminal());
+        assert!(ClaimStatus::AppealRejected.is_terminal());
+    }
+}
