@@ -194,5 +194,5 @@ fn get_multiplier_table_returns_default_after_init() {
     let (_env, client, _, _) = setup();
     let table = client.get_multiplier_table();
     // Default table has entries — just verify it's non-empty / doesn't panic
-    assert!(!table.region_multipliers.is_empty());
+    assert!(!table.region.is_empty());
 }

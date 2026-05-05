@@ -4,7 +4,9 @@ use niffyinsure::{types::TerminationReason, NiffyInsureClient};
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
 fn setup_contract(env: &Env) -> (NiffyInsureClient<'_>, Address, Address) {
+    use soroban_sdk::testutils::Ledger;
     env.mock_all_auths();
+    env.ledger().with_mut(|l| l.sequence_number = 100);
     let contract_id = env.register(niffyinsure::NiffyInsure, ());
     let client = NiffyInsureClient::new(env, &contract_id);
     let admin = Address::generate(env);
@@ -379,18 +381,8 @@ fn admin_terminate_with_open_claims_emits_bypass_flag_in_event() {
     // The PolicyTerminated event must carry open_claim_bypass = 1 and open_claims > 0
     // as the on-chain warning signal for operators and indexers.
     let all_events = env.events().all();
-    let mut found_bypass_event = false;
-    for (_, topics, data) in all_events.iter() {
-        let topic_debug = soroban_sdk::testutils::arbitrary::std::format!("{:?}", topics);
-        if topic_debug.contains("policy_terminated") {
-            let data_debug = soroban_sdk::testutils::arbitrary::std::format!("{:?}", data);
-            // open_claim_bypass field is 1 when the bypass was used.
-            // The event struct encodes it as a u32 field.
-            found_bypass_event = true;
-            // Verify the event was emitted (presence is the warning signal).
-            let _ = data_debug; // event data verified by presence
-        }
-    }
+    let events_debug = soroban_sdk::testutils::arbitrary::std::format!("{:?}", all_events);
+    let found_bypass_event = events_debug.contains("policy_terminated");
     assert!(
         found_bypass_event,
         "policy_terminated event must be emitted when allow_open_claims = true"
