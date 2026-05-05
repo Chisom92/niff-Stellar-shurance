@@ -7,8 +7,8 @@ use niffyinsure::{
     },
     types::{AgeBand, CoverageTier, MultiplierKey, RegionTier, RiskInput},
 };
-use soroban_sdk::{Env};
 use soroban_sdk::testutils::Address;
+use soroban_sdk::Env;
 
 #[test]
 fn default_table_matches_known_reference_vectors() {
