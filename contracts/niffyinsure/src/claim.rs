@@ -785,10 +785,10 @@ pub fn set_allowed_asset(env: &Env, asset: &Address, allowed: bool) {
 mod evidence_hash_tests {
     use crate::types::ClaimEvidenceEntry;
     use crate::validate::{check_claim_fields, Error};
-    use soroban_sdk::{Bytes, BytesN, Env, String, Vec};
+    use soroban_sdk::{BytesN, Env, String, Vec};
 
     fn make_hash(env: &Env, fill: u8) -> BytesN<32> {
-        let mut b = [fill; 32];
+        let b = [fill; 32];
         BytesN::from_array(env, &b)
     }
 
@@ -806,29 +806,36 @@ mod evidence_hash_tests {
     #[test]
     fn zero_hash_is_rejected() {
         let env = Env::default();
+        let contract_id = env.register(crate::NiffyInsure, ());
         let mut evidence: Vec<ClaimEvidenceEntry> = Vec::new(&env);
         evidence.push_back(ClaimEvidenceEntry {
             url: make_url(&env),
             hash: make_hash(&env, 0x00),
         });
-        let err = check_claim_fields(&env, 100, 1000, &make_details(&env), &evidence).unwrap_err();
+        let err = env.as_contract(&contract_id, || {
+            check_claim_fields(&env, 100, 1000, &make_details(&env), &evidence).unwrap_err()
+        });
         assert_eq!(err, Error::ExcessiveEvidenceBytes);
     }
 
     #[test]
     fn non_zero_hash_is_accepted() {
         let env = Env::default();
+        let contract_id = env.register(crate::NiffyInsure, ());
         let mut evidence: Vec<ClaimEvidenceEntry> = Vec::new(&env);
         evidence.push_back(ClaimEvidenceEntry {
             url: make_url(&env),
             hash: make_hash(&env, 0xab),
         });
-        assert!(check_claim_fields(&env, 100, 1000, &make_details(&env), &evidence).is_ok());
+        env.as_contract(&contract_id, || {
+            assert!(check_claim_fields(&env, 100, 1000, &make_details(&env), &evidence).is_ok());
+        });
     }
 
     #[test]
     fn mixed_zero_and_nonzero_hash_rejected_on_zero_entry() {
         let env = Env::default();
+        let contract_id = env.register(crate::NiffyInsure, ());
         let mut evidence: Vec<ClaimEvidenceEntry> = Vec::new(&env);
         evidence.push_back(ClaimEvidenceEntry {
             url: make_url(&env),
@@ -838,7 +845,9 @@ mod evidence_hash_tests {
             url: make_url(&env),
             hash: make_hash(&env, 0x00),
         });
-        let err = check_claim_fields(&env, 100, 1000, &make_details(&env), &evidence).unwrap_err();
+        let err = env.as_contract(&contract_id, || {
+            check_claim_fields(&env, 100, 1000, &make_details(&env), &evidence).unwrap_err()
+        });
         assert_eq!(err, Error::ExcessiveEvidenceBytes);
     }
 
