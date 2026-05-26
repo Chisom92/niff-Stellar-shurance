@@ -4,14 +4,18 @@ import { useState, useEffect } from "react";
 
 import type { ToastActionElement, ToastProps } from "./toast";
 
-const TOAST_LIMIT = 1;
+const TOAST_LIMIT = 5;
 const TOAST_REMOVE_DELAY = 1000000;
+/** Default auto-dismiss duration in ms. Pass `duration` to override per-toast. */
+const DEFAULT_DURATION_MS = 5000;
 
 type ToasterToast = ToastProps & {
   id: string;
   title?: React.ReactNode;
   description?: React.ReactNode;
   action?: ToastActionElement;
+  /** Auto-dismiss after this many ms. Set to 0 to disable auto-dismiss. */
+  duration?: number;
 };
 
 const actionTypes = {
@@ -156,12 +160,30 @@ function toast({ ...props }: Toast) {
     },
   });
 
+  // Auto-dismiss after `duration` ms (default 5 s). Pass duration=0 to disable.
+  const duration = props.duration ?? DEFAULT_DURATION_MS;
+  if (duration > 0) {
+    setTimeout(dismiss, duration);
+  }
+
   return {
     id: id,
     dismiss,
     update,
   };
 }
+
+toast.success = (title: string, description?: string, opts?: Omit<Toast, 'title' | 'description' | 'variant'>) =>
+  toast({ ...opts, variant: 'success', title, description });
+
+toast.warning = (title: string, description?: string, opts?: Omit<Toast, 'title' | 'description' | 'variant'>) =>
+  toast({ ...opts, variant: 'warning', title, description });
+
+toast.info = (title: string, description?: string, opts?: Omit<Toast, 'title' | 'description' | 'variant'>) =>
+  toast({ ...opts, variant: 'info', title, description });
+
+toast.error = (title: string, description?: string, opts?: Omit<Toast, 'title' | 'description' | 'variant'>) =>
+  toast({ ...opts, variant: 'destructive', title, description });
 
 function useToast() {
   const [state, setState] = useState<State>(memoryState);
