@@ -57,9 +57,17 @@ Generic `{statusCode, message}` (no violations – security: no hints).
 ## API
 See `/docs`.
 
+### Versioning
+
+REST routes are versioned with a URI prefix: **`/api/v1/...`** (NestJS URI versioning, default version `1`).
+
+- **Current version:** `v1` — all controllers are served under `/api/v1/` unless noted otherwise.
+- **Deprecated routes:** Handlers marked with `@DeprecatedApi()` respond with `Deprecation: true` and an HTTP-date `Sunset` header (`DEPRECATED_API_SUNSET_HTTP_DATE` in `src/common/versioning/api-versioning.constants.ts`). Experimental endpoints under `/api/v1/experimental/*` are deprecated and scheduled for removal after the sunset date.
+- **Production:** Requests to `/api/*` without a `v{n}` segment (except `/docs` and `/openapi.json`) return **404** via `RejectUnversionedApiMiddleware`.
+
 ## GraphQL
 
-GraphQL is exposed at `/api/graphql`.
+GraphQL is exposed at `/api/v1/graphql` (same global API version prefix).
 
 - Schema style: code-first (`src/graphql`)
 - Production introspection defaults to off
