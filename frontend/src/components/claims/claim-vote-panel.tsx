@@ -17,6 +17,10 @@ import {
   explorerUrl,
   getVoteErrorMessage,
   VoteAPIError,
+  checkAppealStatus,
+  simulateAppeal,
+  submitAppeal,
+  getAppealErrorMessage,
 } from '@/lib/api/vote'
 import {
   Claim,
@@ -27,6 +31,8 @@ import {
 } from '@/lib/schemas/vote'
 import { trackVoteCast } from '@/lib/analytics'
 
+import { AppealButton } from './AppealButton'
+import { AppealConfirmModal } from './AppealConfirmModal'
 import { VoteConfirmModal } from './vote-confirm-modal'
 import { VoteEducationPanel } from './vote-education-panel'
 import { VoteTally } from './vote-tally'
@@ -36,6 +42,7 @@ interface ClaimVotePanelProps {
 }
 
 type SubmitState = 'idle' | 'simulating' | 'confirming' | 'signing' | 'submitting' | 'done'
+type AppealState = 'idle' | 'confirming' | 'signing' | 'submitting' | 'done'
 
 const POLL_INTERVAL_MS = 8_000
 
@@ -55,6 +62,12 @@ export function ClaimVotePanel({ claimId }: ClaimVotePanelProps) {
   const [submitState, setSubmitState] = useState<SubmitState>('idle')
   const [txHash, setTxHash] = useState<string | null>(null)
   const [simError, setSimError] = useState<string | null>(null)
+
+  // Appeal state
+  const [appealState, setAppealState] = useState<AppealState>('idle')
+  const [appealSubmitted, setAppealSubmitted] = useState(false)
+  const [appealTxHash, setAppealTxHash] = useState<string | null>(null)
+  const [appealError, setAppealError] = useState<string | null>(null)
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -94,6 +107,14 @@ export function ClaimVotePanel({ claimId }: ClaimVotePanelProps) {
       .catch(() => setEligibility(null))
       .finally(() => setLoadingEligibility(false))
   }, [claimId, walletAddress])
+
+  // ── Check appeal status for rejected claims ─────────────────────────────────
+  useEffect(() => {
+    if (!claim || claim.status !== 'Rejected') return
+    checkAppealStatus(claimId)
+      .then(setAppealSubmitted)
+      .catch(() => setAppealSubmitted(false))
+  }, [claim, claimId])
 
   // ── Vote flow ───────────────────────────────────────────────────────────────
   const handleVoteClick = useCallback(
@@ -163,6 +184,64 @@ export function ClaimVotePanel({ claimId }: ClaimVotePanelProps) {
   const handleCancel = useCallback(() => {
     setPendingVote(null)
     setSubmitState('idle')
+  }, [])
+
+  // ── Appeal flow ─────────────────────────────────────────────────────────────
+  const handleAppealClick = useCallback(() => {
+    setAppealError(null)
+    setAppealState('confirming')
+  }, [])
+
+  const handleAppealConfirm = useCallback(async () => {
+    if (!walletAddress) return
+    setAppealState('signing')
+
+    try {
+      // Simulate appeal first
+      const simErr = await simulateAppeal(claimId, walletAddress)
+      if (simErr) {
+        setAppealError(simErr)
+        setAppealState('idle')
+        toast({
+          title: 'Appeal simulation failed',
+          description: simErr,
+          variant: 'destructive',
+        })
+        return
+      }
+
+      // Request wallet signature
+      const signedXdr = await signTransaction(`appeal:${claimId}`)
+
+      setAppealState('submitting')
+      const result = await submitAppeal(claimId, walletAddress, signedXdr)
+
+      setAppealTxHash(result.transactionHash)
+      setAppealSubmitted(true)
+      setAppealState('done')
+
+      // Reload claim to get updated status
+      await loadClaim()
+
+      toast({
+        title: 'Appeal submitted',
+        description: 'Your appeal has been submitted successfully. A new voting window is now open.',
+      })
+    } catch (e) {
+      const msg =
+        e instanceof VoteAPIError
+          ? getAppealErrorMessage(e)
+          : e instanceof Error
+            ? e.message
+            : 'Appeal submission failed'
+      setAppealError(msg)
+      toast({ title: 'Appeal failed', description: msg, variant: 'destructive' })
+      setAppealState('idle')
+    }
+  }, [claimId, walletAddress, signTransaction, toast, loadClaim])
+
+  const handleAppealCancel = useCallback(() => {
+    setAppealState('idle')
   }, [])
 
   // ── Derived state ───────────────────────────────────────────────────────────
@@ -281,6 +360,50 @@ export function ClaimVotePanel({ claimId }: ClaimVotePanelProps) {
         </div>
       )}
 
+      {/* Appeal button for rejected claims */}
+      {claim.status === 'Rejected' && !appealSubmitted && (
+        <AppealButton
+          claim={claim}
+          walletAddress={walletAddress}
+          submitting={appealState === 'signing' || appealState === 'submitting'}
+          onClick={handleAppealClick}
+          className="mt-4"
+        />
+      )}
+
+      {/* Appeal error */}
+      {appealError && (
+        <div
+          role="alert"
+          className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900"
+        >
+          <AlertTriangle className="mr-1 inline h-3 w-3" aria-hidden="true" />
+          Appeal error: {appealError}
+        </div>
+      )}
+
+      {/* Post-appeal tx link */}
+      {appealState === 'done' && appealTxHash && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800"
+        >
+          <CheckCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>Appeal submitted successfully. New voting window is now open.</span>
+          <a
+            href={explorerUrl(appealTxHash)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-auto flex items-center gap-1 underline underline-offset-2"
+            aria-label="View transaction on Stellar Explorer (opens in new tab)"
+          >
+            View on Explorer
+            <ExternalLink className="h-3 w-3" aria-hidden="true" />
+          </a>
+        </div>
+      )}
+
       {/* Vote actions — sticky bar at bottom on mobile, inline on larger screens */}
       {!terminal && (
         <div
@@ -352,6 +475,15 @@ export function ClaimVotePanel({ claimId }: ClaimVotePanelProps) {
         submitting={submitState === 'signing' || submitState === 'submitting'}
         onConfirm={handleConfirm}
         onCancel={handleCancel}
+      />
+
+      {/* Appeal confirmation modal */}
+      <AppealConfirmModal
+        open={appealState === 'confirming'}
+        claim={claim}
+        submitting={appealState === 'signing' || appealState === 'submitting'}
+        onConfirm={handleAppealConfirm}
+        onCancel={handleAppealCancel}
       />
     </div>
   )

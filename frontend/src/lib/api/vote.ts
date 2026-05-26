@@ -103,3 +103,82 @@ export const VOTE_ERROR_MESSAGES: Record<string, string> = {
 export function getVoteErrorMessage(error: VoteAPIError): string {
   return VOTE_ERROR_MESSAGES[error.code] ?? error.message
 }
+
+// ── Appeal API ──────────────────────────────────────────────────────────────
+
+export interface AppealResponse {
+  transactionHash: string;
+  status: string;
+  message: string;
+}
+
+/**
+ * Check if an appeal has already been submitted for this claim.
+ * Returns true if an appeal exists, false otherwise.
+ */
+export async function checkAppealStatus(claimId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/api/claims/${claimId}/appeal/status`)
+    if (!res.ok) return false
+    const data = await res.json()
+    return data.appealSubmitted === true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Simulate the appeal transaction server-side before opening the wallet popup.
+ * Returns null if simulation passes, or an error message string if it fails.
+ */
+export async function simulateAppeal(
+  claimId: string,
+  walletAddress: string,
+): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/claims/${claimId}/appeal/simulate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ walletAddress }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: 'Simulation failed' }))
+      return err.message ?? 'Appeal simulation failed'
+    }
+    return null
+  } catch {
+    return null // non-blocking: proceed to wallet if simulation endpoint unavailable
+  }
+}
+
+/**
+ * Submit an appeal for a rejected claim.
+ * Opens a new voting window with elevated quorum requirements.
+ */
+export async function submitAppeal(
+  claimId: string,
+  walletAddress: string,
+  signedXdr: string,
+): Promise<AppealResponse> {
+  const res = await fetch(`${API_BASE}/api/claims/${claimId}/appeal`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ walletAddress, signedXdr }),
+  })
+  const data = await handleResponse<AppealResponse>(res)
+  return data
+}
+
+export const APPEAL_ERROR_MESSAGES: Record<string, string> = {
+  NOT_CLAIMANT: 'Only the claimant can appeal this claim.',
+  CLAIM_NOT_REJECTED: 'Only rejected claims can be appealed.',
+  APPEAL_ALREADY_SUBMITTED: 'An appeal has already been submitted for this claim.',
+  APPEAL_WINDOW_CLOSED: 'The appeal window for this claim has closed.',
+  CLAIM_NOT_FOUND: 'Claim not found.',
+  CLAIMS_PAUSED: 'Claim operations are currently paused by the contract admin.',
+  REQUEST_FAILED: 'Request failed. Please try again.',
+}
+
+export function getAppealErrorMessage(error: VoteAPIError): string {
+  return APPEAL_ERROR_MESSAGES[error.code] ?? error.message
+}
