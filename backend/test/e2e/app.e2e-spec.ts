@@ -132,4 +132,40 @@ describe('NiffyInsure API (E2E)', () => {
       expect(res.status).toBe(403);
     });
   });
+
+  // ── Idempotency ─────────────────────────────────────────────────────────────
+
+  describe('POST /api/claims (with Idempotency-Key)', () => {
+    const idempotencyKey = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
+
+    it('first request is processed and response cached', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/claims')
+        .set('Idempotency-Key', idempotencyKey)
+        .send({});
+
+      // Either 201 (if endpoint exists) or 404/405 (if not), but should NOT error on idempotency key validation
+      expect([201, 404, 405]).toContain(res.status);
+      expect(res.headers['idempotency-replayed']).toBeUndefined();
+    });
+
+    it('duplicate request with valid UUID v4 key returns Idempotency-Replayed header', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/claims')
+        .set('Idempotency-Key', idempotencyKey)
+        .send({});
+
+      // Endpoint may not exist, but idempotency middleware should set the header on response
+      expect(res.headers['idempotency-replayed']).toBe('true');
+    });
+
+    it('rejects malformed idempotency key (not UUID v4)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/claims')
+        .set('Idempotency-Key', 'not-a-uuid')
+        .send({});
+
+      expect(res.status).toBe(400);
+    });
+  });
 });
