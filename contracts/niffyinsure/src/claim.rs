@@ -298,6 +298,9 @@ pub fn file_claim(
     let claim_id = storage::next_claim_id(env);
     let mut status_history: Vec<ClaimStatusHistoryEntry> = Vec::new(env);
     push_status_transition(&mut status_history, ClaimStatus::Processing, now);
+    storage::snapshot_claim_voters(env, claim_id);
+    let eligible_voter_count = storage::get_claim_voters(env, claim_id).len();
+
     let claim = Claim {
         claim_id,
         policy_id,
@@ -312,6 +315,7 @@ pub fn file_claim(
         approve_votes: 0,
         reject_votes: 0,
         filed_at: now,
+        eligible_voter_count,
         appeal_open_deadline_ledger: 0,
         appeals_count: 0,
         appeal_deadline_ledger: 0,
@@ -322,7 +326,6 @@ pub fn file_claim(
 
     storage::set_claim(env, &claim);
     storage::set_open_claim(env, holder, policy_id, true);
-    storage::snapshot_claim_voters(env, claim_id);
     storage::set_claim_quorum_bps(env, claim_id, storage::get_quorum_bps(env));
     storage::set_last_claim_ledger(env, holder, now);
     storage::set_claim_rate_limit_prev(env, claim_id, rate_limit_anchor_before_filing);
@@ -451,7 +454,7 @@ pub fn vote_on_claim(
         VoteOption::Reject => claim.reject_votes += 1,
     }
 
-    let eligible = snapshot.len();
+    let eligible = claim.eligible_voter_count;
     let cast = claim.approve_votes + claim.reject_votes;
     let quorum_bps = storage::get_claim_quorum_bps(env, claim_id);
     if let Some(res) = resolve_plurality_if_quorum_met(
@@ -528,8 +531,7 @@ fn finalize_claim_inner(env: &Env, claim_id: u64) -> Result<ClaimStatus, Error> 
 
     let status_before = claim.status.clone();
 
-    let voters = storage::get_claim_voters(env, claim_id);
-    let eligible = voters.len();
+    let eligible = claim.eligible_voter_count;
     let cast = claim.approve_votes + claim.reject_votes;
     let quorum_bps = storage::get_claim_quorum_bps(env, claim_id);
 

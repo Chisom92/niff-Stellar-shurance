@@ -521,6 +521,10 @@ pub struct Claim {
     pub reject_votes: u32,
     /// Ledger sequence at which this claim was filed (voting window anchor).
     pub filed_at: u32,
+    /// Number of eligible voters in the snapshot taken at filing time.
+    /// Used for quorum calculation so the result is stable even if the
+    /// snapshot TTL expires before finalization.
+    pub eligible_voter_count: u32,
     // ── Appeal fields ────────────────────────────────────────────────────────
     /// Ledger by which `open_appeal` must be called (0 if never rejected).
     /// Set to `rejected_at + APPEAL_OPEN_WINDOW_LEDGERS` when status → Rejected.
