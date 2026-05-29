@@ -37,6 +37,23 @@ pub enum InitError {
     AlreadyInitialized = 1,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[soroban_sdk::contracterror]
+#[repr(u32)]
+pub enum VetError {
+    /// Vet does not have the required specialization for this record type.
+    InsufficientSpecialization = 1,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[soroban_sdk::contracterror]
+#[repr(u32)]
+pub enum SubscriptionError {
+    /// Address has reached the maximum of 10 active subscriptions.
+    TooManySubscriptions = 1,
+    /// Subscription not found or already expired.
+    NotFound = 2,
+}
 #[contractevent(topics = ["niffyinsure", "allowed_asset_updated"])]
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct AllowedAssetUpdated {
@@ -778,6 +795,8 @@ impl NiffyInsure {
         age_band: types::AgeBand,
         coverage_type: types::CoverageType,
         safety_score: u32,
+        new_coverage_tier: Option<types::CoverageType>,
+        new_coverage_amount: Option<i128>,
     ) -> Result<types::RenewPolicyOutcome, policy::PolicyError> {
         policy::renew_policy(
             &env,
@@ -786,6 +805,8 @@ impl NiffyInsure {
             age_band,
             coverage_type,
             safety_score,
+            new_coverage_tier,
+            new_coverage_amount,
         )
     }
 

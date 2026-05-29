@@ -110,6 +110,10 @@ pub struct PolicyRenewed {
     pub policy_id: u32,
     pub premium: i128,
     pub new_end_ledger: u32,
+    pub old_coverage_type: CoverageType,
+    pub new_coverage_type: CoverageType,
+    pub old_coverage: i128,
+    pub new_coverage: i128,
 }
 
 /// Emitted at most once per `(holder, policy_id, end_ledger)` term when expiry is detected.
@@ -556,6 +560,8 @@ pub fn renew_policy(
     age_band: AgeBand,
     coverage_type: CoverageType,
     safety_score: u32,
+    new_coverage_tier: Option<CoverageType>,
+    new_coverage_amount: Option<i128>,
 ) -> Result<crate::types::RenewPolicyOutcome, PolicyError> {
     storage::assert_bind_not_paused(env);
     holder.require_auth();
@@ -598,15 +604,23 @@ pub fn renew_policy(
         return Err(PolicyError::AssetNotAllowed);
     }
 
+    let effective_coverage_type = new_coverage_tier.unwrap_or_else(|| coverage_type.clone());
+    let effective_coverage_amount = new_coverage_amount.unwrap_or(policy.coverage);
+    if coverage_tier_rank(&effective_coverage_type) < coverage_tier_rank(&coverage_type)
+        || effective_coverage_amount < policy.coverage
+    {
+        return Err(PolicyError::InvalidCoverage);
+    }
+
     let input = RiskInput {
         region: policy.region.clone(),
         age_band: age_band.clone(),
-        coverage: coverage_type,
+        coverage: effective_coverage_type.clone(),
         safety_score,
     };
 
     let quote =
-        crate::calculator::compute_quote(env, &input, policy.coverage, false, QUOTE_TTL_LEDGERS)
+        crate::calculator::compute_quote(env, &input, effective_coverage_amount, false, QUOTE_TTL_LEDGERS)
             .map_err(|e| match e {
                 Error::CalculatorPaused => PolicyError::ContractPaused,
                 Error::CalculatorCallFailed | Error::CalculatorNotSet => {
@@ -627,7 +641,9 @@ pub fn renew_policy(
         .checked_add(ledger::POLICY_DURATION_LEDGERS)
         .ok_or(PolicyError::LedgerOverflow)?;
 
+    let old_coverage = policy.coverage;
     policy.premium = premium_amount;
+    policy.coverage = effective_coverage_amount;
     policy.end_ledger = new_end;
 
     validate::check_policy(&policy).map_err(|_| PolicyError::PolicyValidation)?;
@@ -640,8 +656,20 @@ pub fn renew_policy(
         policy_id,
         premium: premium_amount,
         new_end_ledger: new_end,
+        old_coverage_type: coverage_type,
+        new_coverage_type: effective_coverage_type,
+        old_coverage,
+        new_coverage: effective_coverage_amount,
     }
     .publish(env);
 
     Ok(crate::types::RenewPolicyOutcome::Renewed(policy))
+}
+
+fn coverage_tier_rank(tier: &CoverageType) -> u32 {
+    match tier {
+        CoverageType::Basic => 0,
+        CoverageType::Standard => 1,
+        CoverageType::Premium => 2,
+    }
 }

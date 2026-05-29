@@ -212,9 +212,20 @@ deadline finalization, payout, and withdrawal.
   "version": 1,
   "policy_id": 1,
   "premium": "500000",
-  "new_end_ledger": 3336967
+  "new_end_ledger": 3336967,
+  "old_coverage_type": "Basic",
+  "new_coverage_type": "Standard",
+  "old_coverage": "50000000",
+  "new_coverage": "100000000"
 }
 ```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `old_coverage_type` | CoverageTier | Coverage tier before renewal |
+| `new_coverage_type` | CoverageTier | Coverage tier applied for the renewed term |
+| `old_coverage` | string (stroops) | Coverage amount before renewal |
+| `new_coverage` | string (stroops) | Coverage amount applied for the renewed term |
 
 ---
 
