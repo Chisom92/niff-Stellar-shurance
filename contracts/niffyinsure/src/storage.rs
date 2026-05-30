@@ -1291,3 +1291,28 @@ pub fn is_oracle_enabled(_env: &Env) -> bool {
 pub fn set_oracle_enabled(_env: &Env, _enabled: bool) {
     panic!("ORACLE_TRIGGERS_DISABLED")
 }
+    /// Allowlist of treasury depositors keyed by address.
+    AuthorizedDepositors,
+// ── Treasury depositor allowlist ─────────────────────────────────────────────
+
+pub fn get_authorized_depositors(env: &Env) -> Map<Address, bool> {
+    env.storage()
+        .instance()
+        .get(&DataKey::AuthorizedDepositors)
+        .unwrap_or_else(|| Map::new(env))
+}
+
+pub fn set_authorized_depositor(env: &Env, depositor: &Address, allowed: bool) {
+    let mut depositors = get_authorized_depositors(env);
+    depositors.set(depositor.clone(), allowed);
+    env.storage()
+        .instance()
+        .set(&DataKey::AuthorizedDepositors, &depositors);
+}
+
+pub fn is_authorized_depositor(env: &Env, depositor: &Address) -> bool {
+    get_authorized_depositors(env)
+        .get(depositor.clone())
+        .unwrap_or(false)
+}
+

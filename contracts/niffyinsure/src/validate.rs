@@ -514,3 +514,7 @@ mod evidence_url_validation_tests {
     ClaimEvidenceUpdateNotAllowed = 44,
     /// Evidence count must fit the configured min/max bounds.
     EvidenceCountOutOfBounds = 45,
+    /// Treasury deposits must be strictly positive.
+    ZeroTreasuryDeposit = 46,
+    /// Caller is not on the authorized treasury depositor allowlist.
+    UnauthorizedTreasuryDepositor = 47,
