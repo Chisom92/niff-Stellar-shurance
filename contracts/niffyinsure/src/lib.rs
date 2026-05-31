@@ -1625,3 +1625,100 @@ impl NiffyInsure {
         admin::emit_admin_action(&env, &admin, "admin_set_open_claim_count");
     }
 }
+            44 => validate::Error::ClaimEvidenceUpdateNotAllowed,
+            45 => validate::Error::EvidenceCountOutOfBounds,
+    /// Claimant-only: replace evidence before voting starts.
+    pub fn add_claim_evidence(
+        env: Env,
+        claimant: Address,
+        claim_id: u64,
+        new_evidence: Vec<types::ClaimEvidenceEntry>,
+    ) -> Result<(), validate::Error> {
+        claimant.require_auth();
+        claim::add_claim_evidence(&env, &claimant, claim_id, &new_evidence)
+    }
+
+#[contractevent(topics = ["niffyinsure", "treasury_depositor_updated"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct TreasuryDepositorUpdated {
+    #[topic]
+    pub depositor: Address,
+    pub allowed: bool,
+}
+
+#[contractevent(topics = ["niffyinsure", "treasury_deposited"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct TreasuryDeposited {
+    #[topic]
+    pub depositor: Address,
+    #[topic]
+    pub asset: Address,
+    pub amount: i128,
+    pub at_ledger: u32,
+}
+
+    /// Read-only: whether a depositor is authorized to inject treasury capital.
+    pub fn is_authorized_depositor(env: Env, depositor: Address) -> bool {
+        storage::is_authorized_depositor(&env, &depositor)
+    }
+
+    /// Admin-only: add or remove a treasury depositor from the allowlist.
+    pub fn set_authorized_depositor(
+        env: Env,
+        depositor: Address,
+        allowed: bool,
+    ) -> Result<(), AdminError> {
+        let _admin = admin::require_admin(&env);
+        storage::bump_instance(&env);
+        storage::set_authorized_depositor(&env, &depositor, allowed);
+        TreasuryDepositorUpdated { depositor, allowed }.publish(&env);
+        Ok(())
+    }
+
+    /// Authorized depositor-only: transfer capital into the treasury and emit an event.
+    pub fn deposit_treasury(
+        env: Env,
+        depositor: Address,
+        amount: i128,
+        asset: Address,
+    ) -> Result<(), validate::Error> {
+        storage::bump_instance(&env);
+        if amount <= 0 {
+            return Err(validate::Error::ZeroTreasuryDeposit);
+        }
+        if !storage::is_authorized_depositor(&env, &depositor) {
+            return Err(validate::Error::UnauthorizedTreasuryDepositor);
+        }
+
+        depositor.require_auth();
+
+        let client = soroban_sdk::token::TokenClient::new(&env, &asset);
+        client.transfer(&depositor, &env.current_contract_address(), &amount);
+
+        TreasuryDeposited {
+            depositor,
+            asset,
+            amount,
+            at_ledger: env.ledger().sequence(),
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    /// Read-only: whether a contract payout recipient is explicitly allowlisted.
+    pub fn is_allowed_payout_recipient(env: Env, recipient: Address) -> bool {
+        storage::is_allowed_payout_recipient(&env, &recipient)
+    }
+
+    /// Admin-only: add or remove a contract payout recipient from the allowlist.
+    pub fn set_allowed_payout_recipient(
+        env: Env,
+        recipient: Address,
+        allowed: bool,
+    ) -> Result<(), AdminError> {
+        let _admin = admin::require_admin(&env);
+        storage::bump_instance(&env);
+        storage::set_allowed_payout_recipient(&env, &recipient, allowed);
+        Ok(())
+    }

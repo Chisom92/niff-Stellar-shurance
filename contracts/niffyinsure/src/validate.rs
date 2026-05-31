@@ -55,6 +55,8 @@ pub enum Error {
     RateLimitExceeded = 42,
     /// Evidence URL does not match IPFS or allowlisted gateway format.
     InvalidEvidenceUrl = 43,
+    /// Contract payout recipients must be allowlisted.
+    PayoutRecipientContractNotAllowlisted = 48,
     /// Admin `set_voting_duration_ledgers` value outside allowed [min, max] range.
     VotingDurationOutOfBounds = 49,
     /// Batch get exceeded POLICY_BATCH_GET_MAX.
@@ -520,3 +522,11 @@ mod evidence_url_validation_tests {
         });
     }
 }
+    /// Claim evidence update must happen before any votes are cast.
+    ClaimEvidenceUpdateNotAllowed = 44,
+    /// Evidence count must fit the configured min/max bounds.
+    EvidenceCountOutOfBounds = 45,
+    /// Treasury deposits must be strictly positive.
+    ZeroTreasuryDeposit = 46,
+    /// Caller is not on the authorized treasury depositor allowlist.
+    UnauthorizedTreasuryDepositor = 47,
