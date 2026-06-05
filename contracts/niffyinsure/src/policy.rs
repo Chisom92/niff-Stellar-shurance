@@ -60,6 +60,12 @@ pub enum PolicyError {
     NonceMismatch = 119,
     /// Region code not found in the admin-managed region registry, or region is deactivated.
     InvalidRegion = 121,
+    /// KYC whitelist is enabled and the holder is not in the whitelist.
+    NotWhitelisted = 122,
+    /// Deductible value is invalid (negative or exceeds coverage).
+    InvalidDeductible = 123,
+    /// Treasury balance is insufficient to cover projected claim obligations.
+    InsufficientSolvency = 124,
 }
 
 #[contracttype]
@@ -360,6 +366,11 @@ pub fn initiate_policy(
     // Asset allowlist check — before auth so callers get a clear error.
     if !storage::is_allowed_asset(env, &asset) {
         return Err(PolicyError::AssetNotAllowed);
+    }
+
+    // KYC whitelist check: if enabled, the holder must be explicitly whitelisted.
+    if storage::is_whitelist_enabled(env) && !storage::is_whitelisted(env, &holder) {
+        return Err(PolicyError::NotWhitelisted);
     }
 
     // Region registry validation: if the registry is non-empty, the supplied
